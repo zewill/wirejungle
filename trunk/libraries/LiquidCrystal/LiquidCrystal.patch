@@ -1,0 +1,41 @@
+diff -up /home/ami/workspace/arduino-0015/hardware/libraries/LiquidCrystal/LiquidCrystal.cpp ./LiquidCrystal.cpp
+--- /home/ami/workspace/arduino-0015/hardware/libraries/LiquidCrystal/LiquidCrystal.cpp	2009-03-27 00:23:45.000000000 +0200
++++ ./LiquidCrystal.cpp	2009-06-26 16:59:58.147611031 +0300
+@@ -91,6 +91,25 @@ void LiquidCrystal::setCursor(int col, i
+   command(0x80 | (col + row_offsets[row]));
+ }
+ 
++void LiquidCrystal::setCursorMode(uint8_t mode) {
++  //1 - Blink Character under cursor
++  //2 - Show cursor under character
++  //3 - Show cursor and blink character
++  command(0xC + mode);
++}
++
++void LiquidCrystal::setCustomChar(uint8_t cg_num, uint8_t *symbol)
++{
++  uint8_t i;
++  //only 0..7 are valid custom chars
++  if (cg_num > 7)
++    return;
++  command(0x40 + 8*cg_num);
++  for (i = 0; i < 8; ++i)
++    write(symbol[i]);
++  home();
++}
++
+ void LiquidCrystal::command(uint8_t value) {
+   send(value, LOW);
+ }
+diff -up /home/ami/workspace/arduino-0015/hardware/libraries/LiquidCrystal/LiquidCrystal.h ./LiquidCrystal.h
+--- /home/ami/workspace/arduino-0015/hardware/libraries/LiquidCrystal/LiquidCrystal.h	2009-03-27 00:23:45.000000000 +0200
++++ ./LiquidCrystal.h	2009-06-26 16:59:38.183610837 +0300
+@@ -12,6 +12,8 @@ public:
+   void clear();
+   void home();
+   void setCursor(int, int); 
++  void setCursorMode(uint8_t);
++  void setCustomChar(uint8_t, uint8_t *);
+   /*
+   void shiftDisplayLeft();
+   void shiftDisplayRight();

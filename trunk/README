@@ -1,0 +1,23 @@
+About WireJungle
+----------------
+
+The source files found here are released as part of the projects found at http://wirejungle.wordpress.com
+
+All the software found in this repository is free software. See source files for more information.
+
+This repository includes several types of resources:
+1. Software sources - Full original source code for some software projects. All software is released under GPL v2 unless mentioned otherwise in the source file.
+2. Software patches - Patvhes to other software resources. These patches are also usualy released under GPL v2
+3. Board schematics, graphics and other CAD files - 
+	* Graphic files - Graphic files found here should be available in some open source format (usually Gimp xcf).
+	* Schematics - Electronic circuit schematics in various formats.
+	* CAD - Mechanical engineering files in various formats.
+All graphics, circuit design and CAD files are released under CC Attribution-noncommercial (http://creativecommons.org/licenses/by-nc/2.5/) unless mentioned otherwise
+
+
+Installation
+------------
+
+All files under libraries dir should be installed under Arduino's original libraries directory. This directory usualy is found at: <Arduino install path>/hardware/libraries
+
+.pde sources should be opened with Arduino software package (http://arduino.cc/en/Main/Software).
