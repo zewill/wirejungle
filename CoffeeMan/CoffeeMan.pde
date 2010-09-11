@@ -1,5 +1,5 @@
 /*
-	Copyright 2009 Ami Chayun
+	Copyright 2009-2010 Ami Chayun
 	
 	CoffeeMan is a simple program to turn on a relay in a user selectable time
 	
@@ -15,9 +15,13 @@
 
 #define MAX_TIMESTAMP  ((unsigned long) -1)
 
-#define LCD_RS_PIN 6
-#define LCD_RW_PIN 7
-#define LCD_EN_PIN 8
+#define LCD_RS_PIN   6
+#define LCD_RW_PIN   7
+#define LCD_EN_PIN   8
+#define LCD_D4_PIN   12
+#define LCD_D5_PIN   11
+#define LCD_D6_PIN   10
+#define LCD_D7_PIN   9
 
 //shift register buttons
 #define SHIFT_CLK_PIN 3
@@ -35,45 +39,45 @@
 #define ALARM_STR "Alarm "
 #define TIME_STR   "Time "
 
-#define IS_BTN_SET(x) (x & 0x4)
-#define IS_BTN_PLUS(x) (x & 0x2)
-#define IS_BTN_MINUS(x) (x & 0x1)
-#define IS_BTN_ALARM(x) (x & 0x8)
-#define IS_BTN_DISPLAY(x) (x & 0x80)
+#define IS_BTN_SET(x) (x & 0x8)
+#define IS_BTN_PLUS(x) (x & 0x4)
+#define IS_BTN_MINUS(x) (x & 0x2)
+#define IS_BTN_ALARM(x) (x & 0x1)
+#define IS_BTN_DISPLAY(x) (x & 0x10)
 
 #define IS_BTN_PLUS_OR_MINUS(x) (x & 0x6)  //Plus or minus
 
-#define IS_BTN_DOWN(x) (x & 0x8F)  //Any of the above
+#define IS_BTN_DOWN(x) (x & 0x1F)  //Any of the above
 
-#define INC_MINUTE(x)   \
-	do  {                                      \
-		++x.minute;                   \
-		if (x.minute == 60)       \
-		x.minute = 0;               \
+#define INC_MINUTE(x)                      \
+	do  {                              \
+		x.minute++;                \
+		if (x.minute == 60)        \
+			x.minute = 0;      \
 	} while(0);                        
 
-#define INC_HOUR(x)      \
-	do  {                                     \
-		++x.hour;                      \
+#define INC_HOUR(x)                        \
+	do  {                              \
+		x.hour++;                  \
 		if (x.hour == 24)          \
-		x.hour = 0;                  \
+			x.hour = 0;        \
 	} while(0);
 
-#define DEC_MINUTE(x)  \
-	do  {                                        \
-		--x.minute;                    \
-		if (x.minute > 60)       \
-		x.minute = 59;             \
+#define DEC_MINUTE(x)                      \
+	do  {                              \
+		x.minute--;                \
+		if (x.minute > 60)         \
+			x.minute = 59;     \
 	} while(0);
 
-#define DEC_HOUR(x)      \
-	do  {                                     \
-		--x.hour;                        \
+#define DEC_HOUR(x)                        \
+	do  {                              \
+		x.hour--;                  \
 		if (x.hour > 24)           \
-		x.hour = 23;                 \
+			x.hour = 23;       \
 	} while(0);
 
-#define CLEAR_MSG  do {show_msg = false;refreshDisplay = true;msg_str2 = NULL;} while(0);
+#define CLEAR_MSG  do {show_msg = 0; refreshDisplay = true; msg_str2 = NULL;} while(0);
 #define SET_MSG(x)  do {show_msg = millis(); msg_str1 = x;} while(0);
 #define SET_MSG2(x)  do {msg_str2 = x;} while(0);
 
@@ -132,7 +136,9 @@ uint8_t coffee_steam2[] = {
 };
 
 
-LiquidCrystal lcd(LCD_RS_PIN, LCD_RW_PIN, LCD_EN_PIN, 9, 10, 11, 12);
+LiquidCrystal lcd(LCD_RS_PIN, LCD_RW_PIN, LCD_EN_PIN, 
+                  LCD_D4_PIN, LCD_D5_PIN, LCD_D6_PIN, 
+                  LCD_D7_PIN);
 
 ShiftRegisterIn reg(SHIFT_CLK_PIN, SHIFT_DATA_PIN, SHIFT_LOAD_PIN, SHIFT_CLR_PIN);
 
@@ -160,7 +166,14 @@ boolean blinkOn = false;
 long blinkTimer = 0;
 
 boolean displayMode = 0;
-byte setMode = 0;
+
+enum {
+  SET_MODE_NONE = 0,
+  SET_MODE_HH   = 1,
+  SET_MODE_MM   = 2,
+  SET_MODE_MAX  = 3
+};
+byte setMode = SET_MODE_NONE;
 
 int inputs;
 long last_read = 0;
@@ -176,11 +189,12 @@ boolean refreshDisplay;
 void setup()
 {
 	timestamp = millis();
-	lcd.setCustomChar(1, coffee_symbol1);
-	lcd.setCustomChar(2, coffee_symbol2);
-	lcd.setCustomChar(3, bell_symbol);
-	lcd.setCustomChar(4, coffee_steam1);
-	lcd.setCustomChar(5, coffee_steam2);
+	lcd.begin(16, 2);
+	lcd.createChar(1, coffee_symbol1);
+	lcd.createChar(2, coffee_symbol2);
+	lcd.createChar(3, bell_symbol);
+	lcd.createChar(4, coffee_steam1);
+	lcd.createChar(5, coffee_steam2);
 
 	pinMode(RELAY_PIN, OUTPUT);
 	digitalWrite(RELAY_PIN, LOW);
@@ -188,7 +202,6 @@ void setup()
 
 void loop()
 {
-	//advance clock
 	if (clock.initialized) {
 		advance_clock();
 	}
@@ -196,13 +209,13 @@ void loop()
 
 	handleInputs(); //Allow one press every DEBOUNCE msec
 
-	//Show warning / info messages
-	//If the user caused some sort of display change, don't show message
+	//Show warning / info messages, 
+	//unless the user caused some sort of display change
 	if (show_msg && ! refreshDisplay) {
 		displayMsg();
-	}else if (displayMode == 0) { //show clock/alarm
+	} else if (displayMode == 0) { //show clock/alarm
 		//clock is not set, blink 00:00
-		if (! clock.initialized && !setMode)  {
+		if (! clock.initialized && setMode == SET_MODE_NONE)  {
 			blink_string(TIME_STR "00:00");
 		} else if (refreshDisplay) {
 			displayClock();
@@ -211,6 +224,7 @@ void loop()
 		displayAlarm();
 	}
 }
+
 inline void blink_string(char *str)
 {
 #define BLINK_DELAY 500
@@ -241,10 +255,11 @@ inline void displayClock()
 	else
 		lcd.print(" ");
 	lcd.print("]");
-	lcd.setCursorMode((setMode != 0));
-	if (setMode == 1) {
+
+        setMode != SET_MODE_NONE ? lcd.blink() : lcd.noBlink();
+	if (setMode == SET_MODE_HH) {
 		lcd.setCursor(sizeof(TIME_STR) + 3, 0);
-	} else if (setMode == 2) {
+	} else if (setMode == SET_MODE_MM) {
 		lcd.setCursor(sizeof(TIME_STR), 0);
 	}
 }
@@ -257,19 +272,19 @@ inline void displayAlarm()
 	lcd.print(alarm.toStr());
 
 	//Show some blinken if we're in set. Blink low hours or low min
-	lcd.setCursorMode((setMode != 0));
-	if (setMode == 1) {
+	setMode != SET_MODE_NONE ? lcd.blink() : lcd.noBlink();
+	if (setMode == SET_MODE_HH) {
 		lcd.setCursor(sizeof(ALARM_STR) + 3, 0);
-	} else if (setMode == 2) {
+	} else if (setMode == SET_MODE_MM) {
 		lcd.setCursor(sizeof(ALARM_STR), 0);
 	}
 }
 
 inline void displayMsg()
 {
-	if( (millis() - show_msg) < MSG_TIMEOUT) {
+	if ( (millis() - show_msg) < MSG_TIMEOUT) {
 		//TODO: Clock wrap?
-		lcd.setCursorMode(0);
+		lcd.noBlink();
 		lcd.home();
 		lcd.print(msg_str1);
 		if (msg_str2) {
@@ -285,7 +300,7 @@ inline void handleAlarm()
 {
 	if (clock.initialized && alarm.initialized 
 			&&clock.hour == alarm.hour && clock.minute == alarm.minute)
-		if(alarm.msec == 0) {
+		if (alarm.msec == 0) {
 			//alarm on
 			SET_MSG("Brewing   \x04\x05");
 			SET_MSG2("Coffee... \x01\x02");
@@ -294,13 +309,14 @@ inline void handleAlarm()
 		} else if (alarm.msec + ALARM_DELAY < millis() || millis() < alarm.msec) {
 			digitalWrite(RELAY_PIN, LOW);
 			alarm.initialized = false;
-			refreshDisplay = 1;
+			refreshDisplay = true;
 		}
 }
+
 inline void handleInputs()
 {
 	inputs = reg.read();
-	if (IS_BTN_DOWN(inputs))
+	if (IS_BTN_DOWN(inputs)) {
 		if ((millis() - last_read) > DEBOUNCE || millis() < last_read) {
 			CLEAR_MSG;  //user clicked a button, clear any message
 			last_read = millis();
@@ -310,14 +326,16 @@ inline void handleInputs()
 			toggleDisplay();
 			adjustTime();
 		}
+	}
 }
-//toggle set mode  0 = nothing, 1 = HH, 2 = MM
+
+//Cycle setMode, nothing / hours / minutes
 inline void toggleSet()
 {
 	if (IS_BTN_SET(inputs)) {
-		++setMode;
-		if (setMode > 2)
-			setMode = 0;
+		setMode++;
+		if (setMode == SET_MODE_MAX)
+			setMode = SET_MODE_NONE;
 	}
 }
 
@@ -334,42 +352,45 @@ inline void toggleAlarm()
 		}
 	}
 }
+
 //toggle display 0 = clock, 1 = alarm
 inline void toggleDisplay()
 {
 	if (IS_BTN_DISPLAY(inputs)) {
 		displayMode = ~displayMode;
 		refreshDisplay = true;
-		setMode = 0;
+		setMode = SET_MODE_NONE;
 	}
 }
+
 inline void adjustTime()
 {
-	if (setMode != 0) {
+	if (setMode != SET_MODE_NONE) {
 		if (IS_BTN_PLUS_OR_MINUS(inputs)) {
 			refreshDisplay = true;
 			if (displayMode == 0 && ! clock.initialized)
 				clock.initialized = true;
 		}
 		if (IS_BTN_PLUS(inputs)) {
-			if (setMode == 1) {
+			if (setMode == SET_MODE_HH) {
 				INC_MINUTE( (displayMode == 0 ? clock : alarm) );
-			} else { //setMode == 2
+			} else { //setMode == SET_MODE_MM
 				INC_HOUR((displayMode == 0 ? clock : alarm));
 			}  
 		} else if (IS_BTN_MINUS(inputs)) {
-			if (setMode == 1) {
+			if (setMode == SET_MODE_HH) {
 				DEC_MINUTE((displayMode == 0 ? clock : alarm));
-			} else {//setMode == 2
+			} else {//setMode == SET_MODE_MM
 				DEC_HOUR((displayMode == 0 ? clock : alarm));  
 			}  
 		}
 	}
-	if (setMode == 1 && (IS_BTN_PLUS(inputs) || IS_BTN_MINUS(inputs)) ) {
+	if (setMode == SET_MODE_HH && (IS_BTN_PLUS(inputs) || IS_BTN_MINUS(inputs)) ) {
 		seconds = 0;  //reset seconds on minute change
 		timestamp = millis();  //reset msec
 	}
 }
+
 inline void advance_clock()
 {
 	long tick2 = millis();
@@ -381,7 +402,7 @@ inline void advance_clock()
 	timestamp = tick2;
 	if (dt >= 1000) {
 		dt -= 1000;
-		++seconds;
+		seconds++;
 		if (seconds == 60) {
 			INC_MINUTE(clock);
 			if (clock.minute == 0)
